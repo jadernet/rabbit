@@ -10,30 +10,29 @@ namespace lazebird.rabbit.rabbit
 {
     public partial class Form1 : Form
     {
+        rpanel tftpd_dpanel;
         rtftpd tftpd;
-        rlog tftpdlog;
+        rpanel tftpdlog;
         Hashtable tftpd_dirhash;
         int curtftpd_dir = -1;
         ArrayList tftpd_dirs;
-        int tftpd_timeout = 200;
-        int tftpd_retry = 30;
         Timer tftpd_tmr;
         TextBox lastclicked = null;  // donot support two different dir clicked at the same time
         string lasttftpddir = Environment.CurrentDirectory;
-        int tftpdtblen;
         void init_form_tftpd()
         {
+            tftpd_dpanel = new rpanel(fp_tftpd_dir);
+            tftpdlog = new rpanel(fp_tftpd_log);
             tftpd_dirs = new ArrayList();
             tftpd_tmr = new Timer();
             tftpd_tmr.Interval = 200; // 200ms
             tftpd_tmr.Tick += new EventHandler(tftpd_dir_tick);
             tftpd_dirhash = new Hashtable();
-            tftpdlog = new rlog(tftpd_output);
             tftpd = new rtftpd(tftpd_log_func);
             tftpd_adddir.Click += tftpd_adddir_click;
             tftpd_deldir.Click += tftpd_deldir_click;
             tftpd_btn.Click += tftpd_click;
-            tftpd_fp.AutoScroll = true;
+            fp_tftpd_dir.AutoScroll = true;
         }
         int tftpd_log_func(int id, string msg)
         {
@@ -52,7 +51,7 @@ namespace lazebird.rabbit.rabbit
             if (newidx != curtftpd_dir && curtftpd_dir >= 0)
             {
                 TextBox old = (TextBox)tftpd_dirs[curtftpd_dir];
-                old.BackColor = tftpd_fp.BackColor;
+                old.BackColor = fp_tftpd_dir.BackColor;
             }
             tb.BackColor = Color.YellowGreen;
             curtftpd_dir = newidx;
@@ -95,23 +94,16 @@ namespace lazebird.rabbit.rabbit
         }
         TextBox tftpd_add_dir()
         {
-            TextBox tb = new TextBox();
-            tb.ReadOnly = true;
-            tb.BackColor = tftpd_fp.BackColor;
-            tb.BorderStyle = BorderStyle.None;
-            tb.ForeColor = Color.White;
-            tb.Width = tftpdtblen;
-            tb.MouseDown += tftpd_dir_click;
-            tftpd_fp.Controls.Add(tb);
+            TextBox tb = tftpd_dpanel.add("", tftpd_dir_click, null);
             tftpd_dirs.Add(tb);
             tftpd_set_dir(tb, lasttftpddir);
             return tb;
         }
         void tftpd_del_dir(TextBox tb)
         {
-            tftpd_fp.Controls.Remove(tb);
             tftpd_dirs.Remove(tb);
             tftpd_dirhash.Remove(tb);
+            tftpd_dpanel.del(tb);
         }
         void tftpd_adddir_click(object sender, EventArgs e)
         {
@@ -124,12 +116,6 @@ namespace lazebird.rabbit.rabbit
             curtftpd_dir = -1;  // reset cur index, to avoid problems
             if (tftpd_dirs.Count > 0) tftpd_active_dir((TextBox)tftpd_dirs[tftpd_dirs.Count - 1]);
         }
-        void tftpd_parse_args()
-        {
-            Hashtable opts = ropt.parse_opts(text_tftpdopt.Text);
-            if (opts.ContainsKey("timeout")) int.TryParse((string)opts["timeout"], out tftpd_timeout);
-            if (opts.ContainsKey("retry")) int.TryParse((string)opts["retry"], out tftpd_retry);
-        }
         void tftpd_click(object sender, EventArgs evt)
         {
             try
@@ -138,8 +124,7 @@ namespace lazebird.rabbit.rabbit
                 {
                     tftpdlog.clear();
                     ((Button)btnhash["tftpd_btn"]).Text = Language.trans("停止");
-                    tftpd_parse_args();
-                    tftpd.start(69, tftpd_timeout, tftpd_retry);
+                    tftpd.start(69, ropt.parse_opts(text_tftpdopt.Text));
                 }
                 else
                 {
@@ -155,7 +140,6 @@ namespace lazebird.rabbit.rabbit
         }
         void tftpd_readconf()
         {
-            tftpdtblen = tftpd_fp.Width - 20;
             string[] dirs = rconf.get("tftpd_dirs").Split(';');
             foreach (string path in dirs)
             {
@@ -171,9 +155,9 @@ namespace lazebird.rabbit.rabbit
             if (onloading) return;
             rconf.set("tftpd_dir_index", curtftpd_dir.ToString());
             string dirs = "";
-            foreach (string path in tftpd_dirhash.Values)
+            for (int i = 0; i < tftpd_dirs.Count; i++)
             {
-                dirs += path + ";";
+                dirs += tftpd_dirhash[tftpd_dirs[i]] + ";";
             }
             rconf.set("tftpd_dirs", dirs);
         }

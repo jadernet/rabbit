@@ -11,12 +11,13 @@ namespace lazebird.rabbit.rabbit
 {
     public partial class Form1 : Form
     {
+        rpanel tftpclog;
         rtftpc tftpc;
-        rlog tftpclog;
+        Hashtable tftpc_opts;
         string lasttftpcdir = Environment.CurrentDirectory;
         void init_form_tftpc()
         {
-            tftpclog = new rlog(tftpc_output);
+            tftpclog = new rpanel(fp_tftpc_log);
             text_tftpclfile.DoubleClick += new EventHandler(tftpc_lfile_click);
             btn_tftpcput.Click += new EventHandler(tftpc_put_click);
             btn_tftpcget.Click += new EventHandler(tftpc_get_click);
@@ -38,21 +39,14 @@ namespace lazebird.rabbit.rabbit
             }
         }
         string tftpc_ip;
-        int tftpc_tout;
-        int tftpc_retry;
-        int tftpc_blksize;
         string tftpc_lfile;
         string tftpc_rfile;
         void tftpc_parse_args()
         {
             tftpc_ip = ((TextBox)texthash["tftpc_addr"]).Text;
-            Hashtable opts = ropt.parse_opts(text_tftpcopt.Text);
-            if (opts.ContainsKey("timeout")) int.TryParse((string)opts["timeout"], out tftpc_tout);
-            if (opts.ContainsKey("retry")) int.TryParse((string)opts["retry"], out tftpc_retry);
-            if (opts.ContainsKey("blksize")) int.TryParse((string)opts["blksize"], out tftpc_blksize);
+            tftpc_opts = ropt.parse_opts(text_tftpcopt.Text);
             tftpc_lfile = text_tftpclfile.Text;
             tftpc_rfile = text_tftpcrfile.Text;
-            tftpc = new rtftpc(tftpc_log_func, tftpc_tout, tftpc_retry, tftpc_blksize);
             saveconf();
         }
         void tftpc_get_click(object sender, EventArgs evt)
@@ -60,6 +54,7 @@ namespace lazebird.rabbit.rabbit
             try
             {
                 tftpc_parse_args();
+                tftpc = new rtftpc(tftpc_log_func, tftpc_opts);
                 Thread t = new Thread(() => tftpc.get(tftpc_ip, 69, tftpc_rfile, tftpc_rfile, Modes.octet));
                 t.IsBackground = true;
                 t.Start();
@@ -74,6 +69,7 @@ namespace lazebird.rabbit.rabbit
             try
             {
                 tftpc_parse_args();
+                tftpc = new rtftpc(tftpc_log_func, tftpc_opts);
                 Thread t = new Thread(() => tftpc.put(tftpc_ip, 69, Path.GetFileName(tftpc_lfile), tftpc_lfile, Modes.octet));
                 t.IsBackground = true;
                 t.Start();

@@ -13,18 +13,17 @@ namespace lazebird.rabbit.rabbit
         Queue recq;
         rtaskbar bar;
         string ping_addr;
-        int ping_interval = 1000;
-        int ping_count = -1;
-        bool ping_stoponloss = false;
         bool ping_taskbar = false;
         rping ping;
         string ping_logpath = "";
+        Hashtable ping_opts;
         void init_form_ping()
         {
-            pinglog = new rlog(ping_output);
+            pinglog = new rlog(lb_ping);
             btn_ping.Click += new EventHandler(ping_click);
-            bar = new rtaskbar(pinglog.write);
+            bar = new rtaskbar(pinglog.write, this.Handle);
             recq = new Queue();
+            ping = new rping(ping_log_func);
         }
         void ping_log_func(string msg)
         {
@@ -38,39 +37,39 @@ namespace lazebird.rabbit.rabbit
                 ((Button)btnhash["ping_btn"]).Text = Language.trans("开始");
             }
             else display_taskbar(reply.Status == IPStatus.Success);
-            if (ping != null) text_pingstat.Text = ping.ToString();
+            text_pingstat.Text = ping.ToString();
         }
         void ping_parse_args()
         {
             ping_addr = ((TextBox)texthash["ping_addr"]).Text;
-            Hashtable opts = ropt.parse_opts(text_pingopt.Text);
-            if (opts.ContainsKey("interval")) int.TryParse((string)opts["interval"], out ping_interval);
-            if (opts.ContainsKey("count")) int.TryParse((string)opts["count"], out ping_count);
-            if (opts.ContainsKey("stoponloss")) bool.TryParse((string)opts["stoponloss"], out ping_stoponloss);
-            if (opts.ContainsKey("taskbar")) bool.TryParse((string)opts["taskbar"], out ping_taskbar);
-            if (opts.ContainsKey("log")) ping_logpath = (string)opts["log"];
-            if (!string.IsNullOrEmpty(ping_logpath)) pinglog.setfile(ping_logpath);
+            ping_opts = ropt.parse_opts(text_pingopt.Text);
+            if (ping_opts.ContainsKey("taskbar")) bool.TryParse((string)ping_opts["taskbar"], out ping_taskbar);
+            if (ping_opts.ContainsKey("log")) ping_logpath = (string)ping_opts["log"];
+            if (!string.IsNullOrEmpty(ping_logpath)) pinglog.savefile(ping_logpath);
         }
         void ping_click(object sender, EventArgs evt)
         {
-            if (((Button)btnhash["ping_btn"]).Text == Language.trans("开始"))
+            try
             {
-                ((Form)formhash["form"]).Text = ((TextBox)texthash["ping_addr"]).Text;
-                ((Button)btnhash["ping_btn"]).Text = Language.trans("停止");
-                pinglog.clear();
-                ping_parse_args();
-                recq.Clear();
-                ping = new rping(ping_log_func, ping_addr, ping_interval, ping_count, ping_stoponloss);
-                ping.start(ping_cb, null);
+                if (((Button)btnhash["ping_btn"]).Text == Language.trans("开始"))
+                {
+                    ((Form)formhash["form"]).Text = ((TextBox)texthash["ping_addr"]).Text;
+                    ((Button)btnhash["ping_btn"]).Text = Language.trans("停止");
+                    pinglog.clear();
+                    ping_parse_args();
+                    recq.Clear();
+                    ping.start(ping_addr, ping_opts, ping_cb, null);
+                }
+                else
+                {
+                    ping.stop();
+                    ((Form)formhash["form"]).Text = "Rabbit";
+                    ((Button)btnhash["ping_btn"]).Text = Language.trans("开始");
+                }
+                saveconf();
+
             }
-            else
-            {
-                if (ping != null) ping.stop();
-                ping = null;
-                ((Form)formhash["form"]).Text = "Rabbit";
-                ((Button)btnhash["ping_btn"]).Text = Language.trans("开始");
-            }
-            saveconf();
+            catch (Exception) { }
         }
         void display_taskbar(bool state)
         {

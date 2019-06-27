@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -6,30 +7,28 @@ using static lazebird.rabbit.tftp.pkt;
 
 namespace lazebird.rabbit.tftp
 {
-    class srds : ss // server read session
+    class ss_srd : ss // server read session
     {
         string dirname;
         string dirinfo;
-        public srds(string cwd, UdpClient uc, IPEndPoint r, int maxretry, int timeout) : base(cwd, uc, r, maxretry, timeout)
+        public ss_srd(Func<int, string, int> log, UdpClient uc, IPEndPoint r, Hashtable opts) : base(log, uc, r, opts)
         {
         }
         override public bool pkt_proc(byte[] buf)
         {
             Opcodes op = (Opcodes)buf[1];
             if (op != Opcodes.ReadDir) return false;
-            rdq_pkt pkt = new rdq_pkt();
+            pkt_rdq pkt = new pkt_rdq();
             if (!pkt.parse(buf)) return false;
             dirname = pkt.dirname;
             read_dir(dirname, ref dirinfo);
-            pktbuf = new data_pkt(++blkno, Encoding.Default.GetBytes(dirinfo)).pack();
+            pktbuf = new pkt_data(++blkno, Encoding.Default.GetBytes(dirinfo)).pack();
             curretry = 0;   // reset retry cnt
             return uc.Send(pktbuf, pktbuf.Length, r) == pktbuf.Length;
         }
-        public override void session_display(Func<int, string, int> log)
+        protected override string progress_info()
         {
-            string msg = "I: " + r.ToString() + " " + dirname + " " + dirinfo + " ";
-            msg += totalretry + " retries";
-            log(logidx, msg);
+            return "I: " + r.ToString() + " " + dirname + " " + dirinfo + " " + totalretry + " retries";
         }
     }
 }

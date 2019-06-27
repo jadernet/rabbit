@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -6,21 +7,29 @@ using static lazebird.rabbit.tftp.pkt;
 
 namespace lazebird.rabbit.tftp
 {
-    class crss : ss // client read session
+    class ss_cr : ss // client read session
     {
-        public crss(string localfile, UdpClient uc, IPEndPoint r, int maxretry, int timeout) : base(Path.GetDirectoryName(localfile), uc, r, maxretry, timeout)
+        string remoteFile;
+        Modes tftpmode;
+        public ss_cr(string localfile, string remoteFile, Modes tftpmode, Func<int, string, int> log, UdpClient uc, IPEndPoint r, Hashtable opts) : base(log, uc, r, opts)
         {
             this.filename = Path.GetFileName(localfile);
+            this.remoteFile = remoteFile;
+            this.tftpmode = tftpmode;
         }
         override public bool pkt_proc(byte[] buf)
         {
-            if (blkno == 0 && (Opcodes)buf[1] == Opcodes.OAck) // oack
+            if (buf == null)
             {
-                oack_pkt pkt = new oack_pkt();
+                pktbuf = new pkt_rrq(remoteFile, tftpmode.ToString(), idic["timeout"] * idic["maxretry"] / 1000, idic["blksize"]).pack();
+            }
+            else if (blkno == 0 && (Opcodes)buf[1] == Opcodes.OAck) // oack
+            {
+                pkt_oack pkt = new pkt_oack();
                 if (!pkt.parse(buf)) return false;
-                set_param(pkt.timeout * 1000 / Math.Max(maxretry, 1), pkt.blksize);
+                update_param(pkt.timeout * 1000 / Math.Max(idic["maxretry"], 1), pkt.blksize);
                 write_file(filename);
-                pktbuf = new ack_pkt(blkno++).pack();
+                pktbuf = new pkt_ack(blkno++).pack();
             }
             else
             {
@@ -29,14 +38,14 @@ namespace lazebird.rabbit.tftp
                     write_file(filename);
                     blkno++;
                 }
-                data_pkt pkt = new data_pkt();
+                pkt_data pkt = new pkt_data();
                 if (!pkt.parse(buf)) return false;
                 if (pkt.blkno != (blkno & 0xffff)) return true;  // ignore expired data?
                 filesize += pkt.data.Length;
                 if (pkt.data.Length > 0)
                     while (q.produce(pkt.data) == 0) ; // infinit produce this data
-                pktbuf = new ack_pkt(blkno++).pack();
-                if (pkt.data.Length < blksize) // stop
+                pktbuf = new pkt_ack(blkno++).pack();
+                if (pkt.data.Length < idic["blksize"]) // stop
                 {
                     maxblkno = --blkno;
                     q.stop();

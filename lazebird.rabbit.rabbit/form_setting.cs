@@ -1,5 +1,6 @@
 ﻿using lazebird.rabbit.common;
 using lazebird.vgen.ver;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
@@ -15,6 +16,7 @@ namespace lazebird.rabbit.rabbit
     {
         rlog setlog;
         Version pver;
+        bool restartprompt;
         string prjurl = "https://code.aliyun.com/lazebird/rabbit/tree/master/release";
         // Environment.ExpandEnvironmentVariables(@"%userprofile%\appdata\local");
         string profileuri = Path.GetDirectoryName(ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.PerUserRoamingAndLocal).FilePath);
@@ -23,7 +25,7 @@ namespace lazebird.rabbit.rabbit
         string binaryuri = "https://code.aliyun.com/lazebird/rabbit/raw/master/release/sRabbit.exe";
         void init_form_setting()
         {
-            setlog = new rlog(setting_output);
+            setlog = new rlog(lb_setting);
             pver = Assembly.GetExecutingAssembly().GetName().Version;
             List<string> list = new List<string>();
             list.Add("System");
@@ -31,13 +33,14 @@ namespace lazebird.rabbit.rabbit
             list.Add("中文");
             lang_cb.DataSource = list;
             lang_cb.Text = Language.Getlang();
-            setlog.write("Language: " + Language.Getlang());
+            //setlog.write("Language: " + Language.Getlang());
             lang_cb.SelectedIndexChanged += lang_opt_SelectedIndexChanged;
             cb_systray.CheckedChanged += systray_click;
             ntfico.DoubleClick += systray_double_click;
             ntfico.Icon = Icon;
             Resize += form_resize;
             cb_top.CheckedChanged += top_click;
+            if (sh.autostart_exist()) cb_autostart.Checked = true;  // avoid re-exec shell on start
             cb_autostart.CheckedChanged += autostart_click;
             cb_autoupdate.CheckedChanged += autoupdate_click;
             link_prj.LinkClicked += url_click;
@@ -45,6 +48,13 @@ namespace lazebird.rabbit.rabbit
             link_help.LinkClicked += url_click;
             link_ver.Text = pver.ToString() + " (" + appver.v.ToString() + ")";
             link_ver.LinkClicked += ver_click;
+            SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
+        }
+        void SystemEvents_PowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (e.Mode != PowerModes.Resume) return; // restart app on wakeup
+            Application.Restart();
+            Application.Exit();
         }
         void lang_opt_SelectedIndexChanged(object sender, EventArgs e)
         {
@@ -54,14 +64,20 @@ namespace lazebird.rabbit.rabbit
             setlog.write("Set Language: " + lang_cb.Text);
             setlog.write("Restart App to take effect!");
         }
-        void url_click(object sender, LinkLabelLinkClickedEventArgs e)
+        void url_click(object sender, LinkLabelLinkClickedEventArgs evt)
         {
-            if (sender == link_prj)
-                System.Diagnostics.Process.Start(prjurl);
-            else if (sender == link_prof)
-                System.Diagnostics.Process.Start(profileuri);
-            else if (sender == link_help)
-                System.Diagnostics.Process.Start(helpurl);
+            string path = "";
+            if (sender == link_prj) path = prjurl;
+            else if (sender == link_prof) path = profileuri;
+            else if (sender == link_help) path = helpurl;
+            try
+            {
+                System.Diagnostics.Process.Start(path);
+            }
+            catch (Exception e)
+            {
+                setlog.write("!E: " + e.ToString());
+            }
         }
         string download2str(string uri)
         {
@@ -93,14 +109,17 @@ namespace lazebird.rabbit.rabbit
                 if (res == DialogResult.Yes)
                 {
                     download2file(binaryuri, newbinpath);
-                    DialogResult res2 = MessageBox.Show("Restart & Upgrade?", "Rabbit Upgrade", mbox);
-                    if (res2 == DialogResult.Yes)
+                    if (restartprompt) res = MessageBox.Show("Restart & Upgrade?", "Rabbit Upgrade", mbox);
+                    if (res == DialogResult.Yes)
                     {
-                        upgrade upg = new upgrade(Application.ExecutablePath);
-                        upg.run();
+                        new upgrade(Application.ExecutablePath).run();
                         Application.Exit();
                     }
-                    else MessageBox.Show("New version saved to " + newbinpath, "Rabbit Upgrade");
+                    else
+                    {
+                        new upgrade(Application.ExecutablePath);
+                        MessageBox.Show("New version saved to " + newbinpath, "Rabbit Upgrade");
+                    }
 
                 }
                 else setlog.write("New version: " + v.ToString() + ", click the homepage to download it.");
@@ -126,6 +145,7 @@ namespace lazebird.rabbit.rabbit
         {
             ntfico.Visible = ((CheckBox)sender).Checked;
             ShowInTaskbar = !ntfico.Visible;
+            if (ShowInTaskbar) bar = new rtaskbar(pinglog.write, this.Handle); // reset taskbar
             setting_saveconf();
         }
         void systray_double_click(object sender, EventArgs e)
@@ -140,27 +160,31 @@ namespace lazebird.rabbit.rabbit
         }
         void autostart_click(object sender, EventArgs e)
         {
-            CheckBox cb = (CheckBox)sender;
-            if (cb.Checked) sh.reg_autostart();
+            if (((CheckBox)sender).Checked) sh.reg_autostart();
             else sh.dereg_autostart();
         }
         void autoupdate_click(object sender, EventArgs e)
         {
+            if (((CheckBox)sender).Checked) ver_click(null, null);
             setting_saveconf();
         }
         void setting_readconf()
         {
-            if (File.Exists(upgrade.scriptpath)) File.Delete(upgrade.scriptpath);
-            if (sh.autostart_exist()) cb_autostart.Checked = true;
+            if (File.Exists(upgrade.scriptname)) File.Delete(upgrade.scriptname);
             if (rconf.get("systray") == "true") cb_systray.Checked = true;
+            if (rconf.get("restartprompt") == "true") restartprompt = true;
             if (rconf.get("autoupdate") == "true") cb_autoupdate.Checked = true;
-            if (cb_autoupdate.Checked) ver_click(null, null);
         }
         void setting_saveconf()
         {
             if (onloading) return;
             rconf.set("systray", cb_systray.Checked ? "true" : "false");
+            rconf.set("restartprompt", "false");
             rconf.set("autoupdate", cb_autoupdate.Checked ? "true" : "false");
+        }
+        void on_dispose()
+        {
+            SystemEvents.PowerModeChanged -= SystemEvents_PowerModeChanged;
         }
     }
 }

@@ -2,7 +2,6 @@
 using lazebird.rabbit.plan;
 using System;
 using System.Collections;
-using System.Drawing;
 using System.Windows.Forms;
 using static lazebird.rabbit.plan.rplan;
 
@@ -10,19 +9,19 @@ namespace lazebird.rabbit.rabbit
 {
     public partial class Form1 : Form
     {
+        rpanel plan_panel;
+        rlog planlog;
         Hashtable plan_tbhash;
         Hashtable plan_msghash;
-        rlog planlog;
-        int plantblen;
         bool plan_override;
         void init_form_plan()
         {
+            plan_panel = new rpanel(fp_plan);
+            planlog = new rlog(lb_plan);
             plan_tbhash = new Hashtable();
             plan_msghash = new Hashtable();
-            planlog = new rlog(plan_output);
             btn_planadd.Click += new EventHandler(plan_add_click);
             btn_plandel.Click += new EventHandler(plan_del_click);
-            fp_plan.AutoScroll = true;
             cb_planunit.DataSource = cycleunitlist();
             cb_planunit.Text = cycleunit.minute.ToString();
         }
@@ -39,15 +38,19 @@ namespace lazebird.rabbit.rabbit
             string msg = text_planmsg.Text.Trim();
             if (string.IsNullOrWhiteSpace(msg))
             {
-                plan_log_func("I: msg cannot be null or empty!");
+                plan_log_func("!E: msg cannot be null or empty!");
                 return null;
             }
             if (plan_msghash.ContainsKey(msg))
             {
-                if (!plan_override) return null;
+                if (!plan_override)
+                {
+                    plan_log_func("!E: <" + msg + "> already exists!");
+                    return null;
+                }
                 plan_del(msg);
             }
-            return new rplan(plan_log_func, starttm, cycle, unit, msg);
+            return new rplan(plan_log_func, starttm, cycle, unit, msg, plan_panel.add(msg, null, plan_click));
         }
         void plan2ui(rplan p)
         {
@@ -67,28 +70,22 @@ namespace lazebird.rabbit.rabbit
         void plan_add(rplan p)
         {
             if (p == null) return;
-            TextBox tb = new TextBox();
-            tb.ReadOnly = true;
-            tb.BackColor = Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
-            tb.BorderStyle = BorderStyle.None;
-            tb.ForeColor = Color.White;
-            tb.Text = p.msg;
-            tb.Width = plantblen;
-            //tb.Anchor = (AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
-            tb.DoubleClick += new EventHandler(plan_click);
-            fp_plan.Controls.Add(tb);
-            plan_msghash.Add(p.msg, tb);
-            plan_tbhash.Add(tb, p);
+            plan_msghash.Add(p.msg, p.tb);
+            plan_tbhash.Add(p.tb, p);
         }
         void plan_del(string msg)
         {
-            if (!plan_msghash.ContainsKey(text_planmsg.Text)) return;
+            if (!plan_msghash.ContainsKey(text_planmsg.Text))
+            {
+                plan_log_func("!E: <" + msg + "> not found!");
+                return;
+            }
             TextBox tb = (TextBox)plan_msghash[text_planmsg.Text];
             rplan p = (rplan)plan_tbhash[tb];
             p.stop();
-            fp_plan.Controls.Remove(tb);
             plan_msghash.Remove(text_planmsg.Text);
             plan_tbhash.Remove(tb);
+            plan_panel.del(tb);
         }
         void plan_parse_args()
         {
@@ -108,10 +105,9 @@ namespace lazebird.rabbit.rabbit
         }
         void plan_readconf()
         {
-            plantblen = fp_plan.Width - 20;
             string[] cfgs = rconf.get("plans").Split(';');
             foreach (string cfg in cfgs)
-                if (cfg.Length > 0) plan_add(new rplan(plan_log_func, cfg));
+                if (cfg.Length > 0) plan_add(new rplan(plan_log_func, cfg, plan_panel.add(cfg, null, plan_click)));
         }
         void plan_saveconf()
         {
